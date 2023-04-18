@@ -1,8 +1,16 @@
-[workspace]
-members = [
-	# "xcm-simulator",
-	# "xcm-simulator/example",
-	"xcm-emulator",
-	"xcm-emulator/example",
-	"xcm-emulator/yayoi",
-]
+[package]
+name = "xcm-integration-tests"
+description = "Test kit to emulate cross-chain message passing and XCM execution"
+version = "0.1.0"
+authors = ["Parity Technologies <admin@parity.io>"]
+edition = "2021"
+
+[build-dependencies]
+config = "0.11"
+serde_json = "1.0.95"
+regex = "1.5.4"
+toml = "0.7.3"
+toml_edit = "0.19.8"
+
+# [lib]
+# name = "a"
