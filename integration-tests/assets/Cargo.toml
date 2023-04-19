@@ -30,6 +30,7 @@ pallet-xcm = { default-features = false, git = "https://github.com/paritytech/po
 parachains-common = { default-features = false, git = "https://github.com/paritytech/cumulus", branch = "master" }
 penpal-runtime = { git = "https://github.com/paritytech/cumulus", branch = "master" }
 statemint-runtime = { git = "https://github.com/paritytech/cumulus", branch = "master" }
+statemine-runtime = { git = "https://github.com/paritytech/cumulus", branch = "master" }
 
 # Local
-xcm-emulator = { default-features = false, path = "./xcm-emulator" }
+xcm-emulator = { default-features = false, path = "../../xcm-emulator" }

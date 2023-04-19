@@ -1,6 +1,8 @@
 use std::{fs, path::{Path, PathBuf}, collections::HashMap};
 use regex::Regex;
 use toml_edit::{Document, Value, Value::{InlineTable}, Item, Table, };
+use pathdiff::diff_paths;
+use std::process::Command;
 
 const CONFIG_FILE: &'static str = "config.toml";
 const CARGO_ENV_FILE: &'static str = "Cargo.env.toml";
@@ -14,11 +16,22 @@ fn main() {
     // Create a HashMap to store the variable values
     let mut env_variables: HashMap<String, Value> = HashMap::new();
 
-    let binding = env_doc.as_table_mut();
-    collect_env_variables(binding, &mut env_variables);
+    let table = env_doc.as_table_mut();
+    collect_env_variables(table, &mut env_variables);
 
     // Lookup for Cargo.env.toml to generate Cargo.toml from them
-    lookup_package("./", CARGO_ENV_FILE, None, &mut env_variables);
+    lookup_package("./", vec![CARGO_ENV_FILE], None, &mut env_variables);
+
+	// ////
+	let package_dir = "./integration-tests/assets";
+    std::env::set_current_dir(package_dir).unwrap();
+
+    let output = Command::new("cargo")
+		.args(&["test"])
+        .spawn()
+        .expect("failed to execute cargo test");
+
+	// panic!();
 }
 
 fn generate_cargo_files(mut path: PathBuf, variables: &mut HashMap<String, Value>) {
@@ -28,10 +41,18 @@ fn generate_cargo_files(mut path: PathBuf, variables: &mut HashMap<String, Value
 	// Parse the contents into a TOML document
 	let mut doc = contents.parse::<Document>().unwrap();
 
+	println!("Where the file is {:?}", path);
+
+	let mut doc_path = path.clone();
+	doc_path.pop();
+
+
 	// Recursively search for variables and their values
-	replace_env_variables(&mut doc.as_table_mut(), variables);
+	replace_env_variables(doc_path, &mut doc.as_table_mut(), variables);
 
 	path.set_file_name(CARGO_FILE);
+
+	println!("File to write {:?}", path);
 
 	fs::write(path, doc.to_string()).unwrap();
 }
@@ -51,11 +72,11 @@ fn collect_env_variables(doc: &mut Table, variables: &mut HashMap<String, Value>
 	}
 }
 
-fn replace_env_variables(doc: &mut Table, variables: &mut HashMap<String, Value>) {
+fn replace_env_variables(doc_path: PathBuf, doc: &mut Table, variables: &mut HashMap<String, Value>) {
     for (key, item) in doc.iter_mut() {
         match item {
             // If the value is a table, recursively search for variables in its children
-            Item::Table(table) => replace_env_variables(table, variables),
+            Item::Table(table) => replace_env_variables(doc_path.clone(), table, variables),
             // If the value is a table, recursively search for variables in its children
             Item::Value(InlineTable(inline_table)) => {
 				if let Some((_, env_variable)) = inline_table.remove_entry(ENV_KEY) {
@@ -67,13 +88,21 @@ fn replace_env_variables(doc: &mut Table, variables: &mut HashMap<String, Value>
 								if let Some(root_path_value) = env_inline_table.get_mut("path") {
 									let root_path = root_path_value.as_str().unwrap();
 									// Lookup for generated Cargo.toml to replace the root path with the package path
-									let path = lookup_package(
+									let package_path = lookup_package(
 									root_path,
-									CARGO_FILE,
+									vec![CARGO_FILE, CARGO_ENV_FILE],
 									Some(key.get()),
 									&mut HashMap::new()
 									).expect(&format!("Failed to find package '{}' under '{}' directory", key, root_path));
-									*root_path_value = Value::from(path);
+									println!("The path of the package {:?}", package_path);
+									let package_relative_path = diff_paths(
+										package_path.clone(),
+										doc_path.clone())
+										.unwrap()
+										.to_string_lossy()
+										.into_owned();
+									println!("Relative path {:?}", package_relative_path);
+									*root_path_value = Value::from(package_relative_path);
 								}
 								inline_table.extend(env_inline_table.iter())
 								},
@@ -103,17 +132,17 @@ fn match_env_variable(key: &str, variable: Value) -> bool {
 	false
 }
 
-fn lookup_package_rec(dir: &Path, file_name: &str, name: Option<&str>, variables: &mut HashMap<String, Value>) -> Option<PathBuf> {
+fn lookup_package_rec(dir: &Path, file_name: Vec<&str>, name: Option<&str>, variables: &mut HashMap<String, Value>) -> Option<PathBuf> {
 	if let Ok(entries) = fs::read_dir(dir) {
 		for entry in entries {
 			if let Ok(entry) = entry {
 				let path = entry.path();
 				if path.is_dir() {
-					if let Some(cargo_toml) = lookup_package_rec(&path, file_name, name, variables) {
+					if let Some(cargo_toml) = lookup_package_rec(&path, file_name.clone(), name, variables) {
 						return Some(cargo_toml);
 					}
 				} else if let Some(file) = path.file_name() {
-					if file == file_name {
+					if file_name.contains(&file.to_str().unwrap()) {
 						if let Ok(contents) = fs::read_to_string(&path) {
 							if name.is_some() && contents.contains(&format!("name = \"{}\"", name.unwrap())) {
 								return Some(path);
@@ -129,7 +158,7 @@ fn lookup_package_rec(dir: &Path, file_name: &str, name: Option<&str>, variables
 	None
 }
 
-fn lookup_package(root: &str, file_name: &str, name: Option<&str>, variables: &mut HashMap<String, Value>) -> Option<String> {
+fn lookup_package(root: &str, file_name: Vec<&str>, name: Option<&str>, variables: &mut HashMap<String, Value>) -> Option<String> {
 	let dir = Path::new(root);
 	if let Some(cargo_toml) = lookup_package_rec(dir, file_name, name, variables) {
 		if let Some(parent_dir) = cargo_toml.parent() {

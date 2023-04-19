@@ -134,6 +134,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "pathdiff"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8835116a5c179084a830efb3adc117ab007512b535bc1a21c991d3b32a6b44dd"
+
+[[package]]
 name = "regex"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -275,6 +281,7 @@ name = "xcm-integration-tests"
 version = "0.1.0"
 dependencies = [
  "config",
+ "pathdiff",
  "regex",
  "serde_json",
  "toml 0.7.3",
