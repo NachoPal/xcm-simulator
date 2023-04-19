@@ -4,7 +4,7 @@ use toml_edit::{Document, Value, Value::{InlineTable}, Item, Table, };
 use pathdiff::diff_paths;
 use std::process::Command;
 
-const CONFIG_FILE: &'static str = "config.toml";
+const CONFIG_FILE: &'static str = "env.toml";
 const CARGO_ENV_FILE: &'static str = "Cargo.env.toml";
 const CARGO_FILE: &'static str = "Cargo.toml";
 const ENV_KEY: &'static str = "env";
@@ -25,6 +25,27 @@ fn main() {
 	// ////
 	let package_dir = "./integration-tests/assets";
     std::env::set_current_dir(package_dir).unwrap();
+
+	// use std::process::Command;
+	// use std::sync::atomic::{AtomicBool, Ordering};
+	// use std::sync::Arc;
+	// use std::error::Error;
+
+	// fn main() -> Result<(), Box<dyn Error>> {
+	// 	let mut child = Command::new("some_command").spawn()?;
+	// 	let interrupted = Arc::new(AtomicBool::new(false));
+	// 	let interrupted_clone = interrupted.clone();
+	// 	ctrlc::set_handler(move || {
+	// 		interrupted_clone.store(true, Ordering::SeqCst);
+	// 		child.kill().expect("failed to kill child process");
+	// 	})?;
+
+	// 	while !interrupted.load(Ordering::SeqCst) {
+	// 		// do some work here
+	// 	}
+
+	// 	Ok(())
+	// }
 
     let output = Command::new("cargo")
 		.args(&["test"])
@@ -54,7 +75,18 @@ fn generate_cargo_files(mut path: PathBuf, variables: &mut HashMap<String, Value
 
 	println!("File to write {:?}", path);
 
+	// let new_doc = doc.to_string();
+
+	// if let Ok(existing_doc) = fs::read_to_string(path.clone()) {
+	// 	if !(existing_doc == new_doc) {
+	// 		fs::write(path, doc.to_string()).unwrap();
+	// 	}
+	// } else {
+	// 	fs::write(path, doc.to_string()).unwrap();
+	// }
+
 	fs::write(path, doc.to_string()).unwrap();
+
 }
 
 fn collect_env_variables(doc: &mut Table, variables: &mut HashMap<String, Value>) {
@@ -74,6 +106,8 @@ fn collect_env_variables(doc: &mut Table, variables: &mut HashMap<String, Value>
 
 fn replace_env_variables(doc_path: PathBuf, doc: &mut Table, variables: &mut HashMap<String, Value>) {
     for (key, item) in doc.iter_mut() {
+		println!("Key: {:?}\n", key);
+		println!("ITEM: {:?}\n", item);
         match item {
             // If the value is a table, recursively search for variables in its children
             Item::Table(table) => replace_env_variables(doc_path.clone(), table, variables),
@@ -82,34 +116,43 @@ fn replace_env_variables(doc_path: PathBuf, doc: &mut Table, variables: &mut Has
 				if let Some((_, env_variable)) = inline_table.remove_entry(ENV_KEY) {
 					let mut match_variable = false;
 					for (k, v) in &mut *variables {
+						println!("K: {:?}\n", k);
+						println!("V: {:?}\n", v);
+						println!("ENV VARIABLE: {:?}\n", env_variable);
 						if match_env_variable(k, env_variable.clone()) {
 							match v {
 								Value::InlineTable(env_inline_table) => {
-								if let Some(root_path_value) = env_inline_table.get_mut("path") {
-									let root_path = root_path_value.as_str().unwrap();
-									// Lookup for generated Cargo.toml to replace the root path with the package path
-									let package_path = lookup_package(
-									root_path,
-									vec![CARGO_FILE, CARGO_ENV_FILE],
-									Some(key.get()),
-									&mut HashMap::new()
-									).expect(&format!("Failed to find package '{}' under '{}' directory", key, root_path));
-									println!("The path of the package {:?}", package_path);
-									let package_relative_path = diff_paths(
-										package_path.clone(),
-										doc_path.clone())
-										.unwrap()
-										.to_string_lossy()
-										.into_owned();
-									println!("Relative path {:?}", package_relative_path);
-									*root_path_value = Value::from(package_relative_path);
-								}
-								inline_table.extend(env_inline_table.iter())
+									println!("{:?}\n", env_inline_table);
+									let mut env_inline_table_clone = env_inline_table.clone();
+									if let Some(root_path_value) = env_inline_table_clone.get_mut("path") {
+										let root_path = root_path_value.as_str().unwrap();
+										// Lookup for generated Cargo.toml to replace the root path with the package path
+										let package_path = lookup_package(
+										root_path,
+										vec![CARGO_FILE, CARGO_ENV_FILE],
+										Some(key.get()),
+										&mut HashMap::new()
+										).expect(&format!("Failed to find package '{}' under '{}' directory", key, root_path));
+										println!("The path of the package {:?}", package_path);
+										let package_relative_path = diff_paths(
+											package_path.clone(),
+											doc_path.clone())
+											.unwrap()
+											.to_string_lossy()
+											.into_owned();
+										println!("Relative path {:?}", package_relative_path);
+										*root_path_value = Value::from(package_relative_path);
+
+										// *root_path_value = Value::from(package_path);
+									}
+									inline_table.extend(env_inline_table_clone.iter());
 								},
 								_ => {}
 							};
 							match_variable = true
+							// break;
 						}
+						// if match_variable { break };
 					}
 					if !match_variable { panic!("No {} env variable was found in '{}' file", env_variable, CONFIG_FILE) }
 				}

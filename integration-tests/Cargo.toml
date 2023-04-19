@@ -1,4 +1,6 @@
 [workspace]
+
 members = [
-	"assets"
+	"assets/statemine",
+	"assets/statemint",
 ]
